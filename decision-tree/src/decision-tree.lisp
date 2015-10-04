@@ -88,7 +88,15 @@
 
 (defun whole-row-numbers-list (data-vector)
   (loop
-      for i below (length data-vector) collect i))
+     for i below (length data-vector) collect i))
+
+(defun use-missing (c)
+  (declare (ignore c))
+  (invoke-restart 'use-missing))
+
+(defun skip-missing (c)
+  (declare (ignore c))
+  (invoke-restart 'skip-missing))
 
 (defun aux-split (data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute)
   (let ((split-predicate (make-split-predicate attribute t))
@@ -100,23 +108,30 @@
 	(false-list '()))
    
     (dolist (i list-of-row-numbers (values true-list false-list))
-      (handler-case
+      (restart-case
 	  (if (funcall split-predicate #1=(svref (svref data-vector i) attribute-column-index))
 	      (push i true-list)
 	      (push i false-list))
-	(type-error () (unless (eql :NA #1#) (error "Don't know how to handle the value ~A. Expected something with type ~A." #1# (type-of attribute))))))))
+	(skip-missing ()
+	  :report "Skip the missing value entirely."
+	  (if (eql :NA #1#) nil #2=(error "Don't know how to handle the value ~A. Expected something with type ~A." #1# (type-of attribute))))
+	(use-missing ()
+	  :report "Let the missing value both passe and fail any predicate."
+	  (if (eql :NA #1#) (progn (push i true-list) (push i false-list)) #2#))))))
 
 (defun split (data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute)
   (if (and (null attribute-column-name)
   	   (null attribute))
       list-of-row-numbers
-    (aux-split data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute)))
+      (handler-bind ((type-error #'use-missing))
+	(aux-split data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute))))
 
 (defun delta-gini (data-vector variable-index-hash list-of-row-numbers attribute-column-name
 		   attribute objective-column-index)
 
   (multiple-value-bind (true-list false-list)
-      (aux-split data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute)
+      (handler-bind ((type-error #'skip-missing))
+	(aux-split data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute))
     (if (or (null true-list) (null false-list))
 	0.0d0
       (- (gini-index (sum-up-results data-vector list-of-row-numbers objective-column-index))
@@ -128,7 +143,8 @@
 (defun delta-entropy (data-vector variable-index-hash list-of-row-numbers attribute-column-name
 		      attribute objective-column-index) 
   (multiple-value-bind (true-list false-list)
-      (aux-split data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute)
+      (handler-bind ((type-error #'skip-missing))
+	(aux-split data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute))
     (if (or (null true-list) (null false-list))
 	0.0d0
       (- (entropy (sum-up-results data-vector list-of-row-numbers objective-column-index))
@@ -140,7 +156,8 @@
 (defun delta-variance (data-vector variable-index-hash list-of-row-numbers attribute-column-name
 		       attribute objective-column-index)
   (multiple-value-bind (true-list false-list)
-      (aux-split data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute)
+      (handler-bind ((type-error #'skip-missing))
+	(aux-split data-vector variable-index-hash list-of-row-numbers attribute-column-name attribute))
     (if (or (null true-list) (null false-list))
 	0.0d0
       (- (variance (sum-up-results data-vector list-of-row-numbers objective-column-index))
