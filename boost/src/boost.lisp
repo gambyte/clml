@@ -156,4 +156,4 @@
   `(lambda (y)
      (map 'list
 	  (lambda (x)
-	    (second (find x ',remaps :key #'first :test #'equal))))))
+	    (second (find x ',remaps :key #'first :test #'equal))) y)))

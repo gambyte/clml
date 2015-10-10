@@ -399,3 +399,15 @@ Where N is the number of worker threads which should generally be the number of 
       for tree across forest
       collect (count-tree-node tree)))
 
+(defun regression-forest->adaboost-model (forest unspecialized-dataset objective-column-name &key (tree-evaluator-method 'predict-regression-tree) (dataset-answer-remap nil))
+  (let* ((variable-index-hash (make-variable-index-hash unspecialized-dataset))
+	 (objective-column-index (column-name->column-number variable-index-hash objective-column-name)))
+    (adaboost-from-list->model
+     (loop
+	for tree across forest
+	collect tree)
+     (make-list (length forest) :initial-element tree-evaluator-method)
+     unspecialized-dataset
+     objective-column-index
+     :variable-index-hash variable-index-hash
+     :dataset-answer-remap dataset-answer-remap)))

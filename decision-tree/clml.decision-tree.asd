@@ -31,6 +31,7 @@
   :around-compile call-with-environment
   :depends-on (:clml.hjs
                :lparallel
+	       :clml.boost
                )
   :components (
                (:file "package")

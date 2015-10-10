@@ -447,3 +447,48 @@
 		  2) into s
 	finally (return (/ s n)))))
 
+(defun make-regression-tree-learner-method (unspecialized-dataset &key (test #'delta-variance) (epsilon 0))
+  (let* ((variable-index-hash (make-variable-index-hash unspecialized-dataset)))
+    (make-base-learner-method
+      (let ((root (make-root-node data-vector variable-index-hash objective-column-index :test test :epsilon epsilon)))
+	(values
+	 (make-tree data-vector variable-index-hash objective-column-index root :test test :epsilon epsilon)
+		'regression-tree-model-evaluator)))))
+
+(defun regression-tree-model-evaluator (sub-model query &key variable-index-hash &allow-other-keys)
+  (predict-regression-tree query nil sub-model variable-index-hash))
+
+(defmacro make-regression-tree-model-evaluator (name &rest remaps)
+  (let ((output (gensym)))
+    `(defun ,name (sub-model query &key variable-index-hash &allow-other-keys)
+       (let ((,output (predict-decision-tree query nil sub-model variable-index-hash)))
+	 (second (find ,output ',remaps :key #'first :test #'equal))))))
+
+(defun regression-tree->regression-tree-model (tree unspecialized-dataset)
+  (let ((variable-index-hash (make-variable-index-hash unspecialized-dataset)))
+    (make-model
+     :sub-models (list tree)
+     :sub-model-evaluators (list 'regression-tree-model-evaluator)
+     :sub-model-weights '(1.0f0)
+     :variable-index-hash variable-index-hash)))
+
+(defun make-regression-tree-model (unspecialized-dataset objective-column-name &key (test #'delta-variance) (epsilon 0))
+  (let ((variable-index-hash (make-variable-index-hash unspecialized-dataset)))
+    (make-model
+     :sub-models (list (make-regression-tree unspecialized-dataset objective-column-name :test test :epsilon epsilon))
+     :sub-model-evaluators (list 'regression-tree-model-evaluator)
+     :sub-model-weights '(1.0f0)
+     :variable-index-hash variable-index-hash)))
+
+(defun boost-model-with-regression-tree (model unspecialized-dataset objective-column-name &key (test #'delta-variance) (epsilon 0) (loss-functional-derivative #'squared-error-functional-derivative) (one-dimensional-optimizer #'one-dimensional-gradient-descent) (shrinkage nil))
+  (unless (model-variable-index-hash model) (setf (model-variable-index-hash model) (make-variable-index-hash unspecialized-dataset)))
+  (let ((objective-column-index (column-name->column-number (model-variable-index-hash model) objective-column-name)))
+    (gradient-boost
+     model
+     unspecialized-dataset
+     (make-regression-tree-learner-method unspecialized-dataset :test test :epsilon epsilon)
+     objective-column-index
+     :loss-functional-derivative loss-functional-derivative
+     :one-dimensional-optimizer one-dimensional-optimizer
+     :shrinkage shrinkage)))
+
